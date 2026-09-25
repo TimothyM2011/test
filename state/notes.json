@@ -1,4 +1,17 @@
 {
-  "notes": [],
-  "selected_id": null
+  "notes": [
+    {
+      "id": "aee12645-0244-4e10-b2ef-ec0fa4165378",
+      "title": "To Do",
+      "body": "To Do:\n. DeskBot\n. File all projects\n. SkillTrn\t\n. Achieve3000\n. Get above 90% on the exam to get a Mac mini\n\nHW - Geography, History, Math",
+      "updated": "2026-09-25T20:29:40.486621+00:00"
+    },
+    {
+      "id": "0b85d0f5-f385-4074-9fba-50c14ea89868",
+      "title": "Bill",
+      "body": "Bill:\n. 4 TT motors with wheels\n. 4 3.7 V battery\n. Romeo\n. Power Distribution module\n. 5 servo motors with wheels\n. NEMA 17 Stepper Motor\n. Stepper Driver\n. 4 Battery Cases\n. Servo Horn\n. Battery Charger\n. 2 MG996r motor\n. Steel Ball bearing\n\nNot needed:\n. Stepper Driver\n. NEMA 17 Stepper Motor\n. Steel Ball bearing\n. USB-C\n~Almost 120 AED loss\n",
+      "updated": "2026-09-25T20:27:29.830984+00:00"
+    }
+  ],
+  "selected_id": "aee12645-0244-4e10-b2ef-ec0fa4165378"
 }

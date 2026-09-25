@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
+from core.theme import DANGER, ACCENT
+
 class Card(QFrame):
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
@@ -66,28 +68,99 @@ class MetricRow(QWidget):
         self.value_label.setText(f"{percent:.0f}%{suffix}")
 
 class IconButton(QPushButton):
-    """Small square button for header affordances (chevrons, +, x)."""
+    """
+    Small square button for header/row affordances (chevrons, +, delete).
 
-    def __init__(self, text: str, parent=None, size: int = 22, tooltip: str = ""):
+    variant="default": neutral, lights up on hover (add, expand, etc).
+    variant="danger": stays neutral at rest, turns red on hover/press
+      so destructive actions (delete, clear) are visually distinct
+      before the click, not just via tooltip text.
+
+    Deliberately larger than a bare text glyph (28px, up from 22px)
+    and always paired with a tooltip so the affordance reads as a
+    button, not stray punctuation.
+    """
+
+    def __init__(self, text: str, parent=None, size: int = 28, tooltip: str = "",
+                 variant: str = "default"):
         super().__init__(text, parent)
         self.setFixedSize(size, size)
         self.setCursor(Qt.PointingHandCursor)
+
+        if variant == "danger":
+            hover_color = DANGER
+            hover_bg = "#3a2323"
+            pressed_bg = "#2c1a1a"
+        else:
+            hover_color = "#e6e6e8"
+            hover_bg = "#2a2a30"
+            pressed_bg = "#1c1c20"
+
         self.setStyleSheet(
             "QPushButton {"
             "  background: transparent;"
-            "  border: none;"
+            "  border: 1px solid transparent;"
             "  color: #9a9aa2;"
-            "  font-size: 13px;"
+            "  font-size: 14px;"
+            "  font-weight: 600;"
             "  padding: 0;"
             "}"
             "QPushButton:hover {"
-            "  color: #e6e6e8;"
-            "  background-color: #2a2a30;"
-            "  border-radius: 4px;"
+            f"  color: {hover_color};"
+            f"  background-color: {hover_bg};"
+            "  border-radius: 5px;"
+            "}"
+            "QPushButton:pressed {"
+            f"  background-color: {pressed_bg};"
+            "  border-radius: 5px;"
             "}"
         )
         if tooltip:
             self.setToolTip(tooltip)
+            self.setAccessibleName(tooltip)
+
+class CheckToggle(QPushButton):
+    """
+    A checkable square control that shows a check mark (not a filled
+    blue box) when checked, with a border that's actually visible at
+    rest so it reads as a checkbox before you've ever clicked it.
+    """
+
+    def __init__(self, checked: bool = False, parent=None, size: int = 20):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setChecked(checked)
+        self.setFixedSize(size, size)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setText("\u2713" if checked else "")
+        self.toggled.connect(self._on_toggled)
+        self._apply_style()
+
+    def _on_toggled(self, checked: bool):
+        self.setText("\u2713" if checked else "")
+        self._apply_style()
+
+    def _apply_style(self):
+        self.setStyleSheet(
+            "QPushButton {"
+            "  border-radius: 4px;"
+            "  border: 1px solid #6b6b74;"
+            "  background-color: #16161a;"
+            "  color: #101014;"
+            "  font-size: 12px;"
+            "  font-weight: 700;"
+            "  padding: 0;"
+            "}"
+            "QPushButton:checked {"
+            f"  background-color: {ACCENT};"
+            f"  border-color: {ACCENT};"
+            "  color: #101014;"
+            "}"
+            "QPushButton:hover {"
+            f"  border-color: {ACCENT};"
+            "}"
+        )
+
 
 class ExpandedCard(QFrame):
     """
@@ -116,7 +189,8 @@ class ExpandedCard(QFrame):
         self.title_label = QLabel(title.upper())
         self.title_label.setProperty("class", "CardTitle")
 
-        self.expand_btn = IconButton(">", tooltip="Expand")
+        self.expand_btn = IconButton("\u2304", tooltip="Expand")
+        self._expand_btn_base_style = self.expand_btn.styleSheet()
 
         header.addWidget(self.title_label)
         header.addStretch()
@@ -145,13 +219,25 @@ class ExpandedCard(QFrame):
         if expanded:
             self.compact_widget.hide()
             self.expanded_widget.show()
-            self.expand_btn.setText("<")
+            self.expand_btn.setText("\u2303")
             self.expand_btn.setToolTip("Collapse")
+            self.expand_btn.setStyleSheet(
+                self._expand_btn_base_style + f"QPushButton {{ color: {ACCENT}; }}"
+            )
+            # The default card border (#33333a on a #232328 background)
+            # is nearly invisible. Give the expanded card a clearly
+            # visible outline so its bounds actually read as a box
+            # rather than blending into the sidebar.
+            self.setStyleSheet(
+                f"QFrame#Card {{ border: 1px solid {ACCENT}; border-radius: 10px; }}"
+            )
         else:
             self.expanded_widget.hide()
             self.compact_widget.show()
-            self.expand_btn.setText(">")
+            self.expand_btn.setText("\u2304")
             self.expand_btn.setToolTip("Expand")
+            self.expand_btn.setStyleSheet(self._expand_btn_base_style)
+            self.setStyleSheet("")
 
     def is_expanded(self) -> bool:
         return self._expanded

@@ -1,3 +1,11 @@
 {
-  "tasks": []
+  "tasks": [
+    {
+      "id": "bbc0b8e8-24d6-4f9e-b9d9-b74779b71d6a",
+      "text": "Physics - Gravitation",
+      "done": false,
+      "due": "2026-09-27",
+      "created": "2026-09-25T23:57:26.165373"
+    }
+  ]
 }

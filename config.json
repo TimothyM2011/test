@@ -13,7 +13,9 @@
     "hardware",
     "notes",
     "tasks",
-    "timers"
+    "timers",
+    "clipboard",
+    "calculator"
   ],
   "apps": [
     {

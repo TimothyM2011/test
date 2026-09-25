@@ -8,6 +8,7 @@ refreshed once per second while open.
 from PySide6.QtWidgets import QWidget
 
 from core.module import Module
+from core.registry import register_module
 from core.widgets import Card, MetricRow
 from modules.hardware import hardware
 
@@ -51,3 +52,6 @@ class HardwareModule(Module):
             self._ram_row.set_value(stats.get("ram_percent"))
         if self._gpu_row is not None:
             self._gpu_row.set_value(stats.get("gpu_percent"))
+
+
+register_module("hardware", HardwareModule)

@@ -1,0 +1,59 @@
+{
+  "entries": [
+    {
+      "id": "d76e4c37-e4cf-4ad4-ad4f-c6e7fb81ed60",
+      "text": "https://github.com/TimothyM2011/test",
+      "created": "2026-09-25T20:49:56.322236+00:00"
+    },
+    {
+      "id": "7165a109-b5e8-4f30-bd87-3115ad68f389",
+      "text": "Bill:\n. 4 TT motors with wheels\n. 4 3.7 V battery\n. Romeo\n. Power Distribution module\n. 5 servo motors with wheels\n. NEMA 17 Stepper Motor\n. Stepper Driver\n. 4 Battery Cases\n. Servo Horn\n. Battery Charger\n. 2 MG996r motor\n. Steel Ball bearing\n\nNot needed:\n. Stepper Driver\n. NEMA 17 Stepper Motor\n. Steel Ball bearing\n. USB-C\n~Almost 120 AED loss\n",
+      "created": "2026-09-25T20:27:20.988056+00:00"
+    },
+    {
+      "id": "04e966cf-6841-4cd7-971e-50ab19e06be7",
+      "text": "To Do:\n. DeskBot\n. File all projects\n. SkillTrn\t\n. Achieve3000\n. Get above 90% on the exam to get a Mac mini\n\nHW - Geography\n",
+      "created": "2026-09-25T20:26:37.125767+00:00"
+    },
+    {
+      "id": "5c586988-3824-4d16-bc6e-a00dc587229e",
+      "text": "file:///C:/Users/Timothy/3D Objects/right-dock/launch - Shortcut.lnk",
+      "created": "2026-09-25T20:22:07.752944+00:00"
+    },
+    {
+      "id": "a61f2cc9-f423-4bb3-97d9-72aeb1146f9c",
+      "text": "file:///C:/Users/Timothy/Downloads/core-20260926-001922/core",
+      "created": "2026-09-25T20:19:54.019454+00:00"
+    },
+    {
+      "id": "ef55da17-be71-42aa-9328-b42f07296042",
+      "text": "' launch.vbs — start RightDock hidden (no console window)\nSet shell = CreateObject(\"WScript.Shell\")\nSet fso = CreateObject(\"Scripting.FileSystemObject\")\n\nprojectDir = fso.GetParentFolderName(WScript.ScriptFullName)\npythonw = \"pythonw.exe\"\n\n' Run pythonw main.py from the project folder, window state 0 (hidden)\nshell.CurrentDirectory = projectDir\nshell.Run \"\"\"\" & pythonw & \"\"\" \"\"\" & projectDir & \"\\main.py\"\"\", 0, False",
+      "created": "2026-09-25T20:17:52.559099+00:00"
+    },
+    {
+      "id": "1ad8267c-5c42-4119-9533-c8e6f3a71726",
+      "text": "file:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/config.json\nfile:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/main.py\nfile:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/core\nfile:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/modules\n",
+      "created": "2026-09-25T20:08:41.813008+00:00"
+    },
+    {
+      "id": "83adb4d1-f49e-4fa7-a025-69c2728f43a8",
+      "text": "https://www.instagram.com/reel/DcYNO8hgzUS/?utm_source=ig_web_copy_link&stkn=NTc4MTIwNjQ2YQ==",
+      "created": "2026-09-25T20:07:26.177120+00:00"
+    },
+    {
+      "id": "f4dce190-2bee-437f-8eb7-6de84f0036bc",
+      "text": "https://www.instagram.com/reel/Ddq7uFEv0mP/?utm_source=ig_web_copy_link&stkn=NTc4MTIwNjQ2YQ==",
+      "created": "2026-09-25T20:03:36.832843+00:00"
+    },
+    {
+      "id": "4c9408d3-02cf-48df-a100-00ffd70ce641",
+      "text": "Math - Volume and Surface area of cuboid and cube",
+      "created": "2026-09-25T19:56:20.686854+00:00"
+    },
+    {
+      "id": "021a1d11-de56-444d-9f4f-0376f8a21caa",
+      "text": "file:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/config.json\nfile:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/main.py\nfile:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/core\nfile:///C:/Users/Timothy/Downloads/rightside-sidebar-updated/test-main/modules\n",
+      "created": "2026-09-25T19:55:26.846417+00:00"
+    }
+  ]
+}

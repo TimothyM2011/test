@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from core.module import Module
+from core.registry import register_module
 from core.widgets import ExpandedCard, IconButton
 
 
@@ -65,6 +66,8 @@ class ClockModule(Module):
         self._stopwatch_label = None
         self._timer_toggle = None
         self._sw_toggle = None
+        self._timer_toggle_expanded = None
+        self._sw_toggle_expanded = None
         self._name_edit = None
         self._mins_spin = None
         self._data = self.load_state()
@@ -156,6 +159,23 @@ class ClockModule(Module):
         )
         self._card.compact_layout.addWidget(self._compact_time)
 
+        # The Timer/Stopwatch toggle previously only lived in the
+        # compact layout, which is hidden while expanded - so once
+        # expanded there was no way to switch modes at all. Give the
+        # expanded view its own copy, kept in sync with the compact
+        # one in _apply_mode().
+        toggle_row_expanded = QHBoxLayout()
+        self._timer_toggle_expanded = QPushButton("Timer")
+        self._sw_toggle_expanded = QPushButton("Stopwatch")
+        self._timer_toggle_expanded.setCheckable(True)
+        self._sw_toggle_expanded.setCheckable(True)
+        self._timer_toggle_expanded.clicked.connect(lambda: self._set_mode("timer"))
+        self._sw_toggle_expanded.clicked.connect(lambda: self._set_mode("stopwatch"))
+        toggle_row_expanded.addWidget(self._timer_toggle_expanded)
+        toggle_row_expanded.addWidget(self._sw_toggle_expanded)
+        toggle_row_expanded.addStretch()
+        self._card.expanded_layout.addLayout(toggle_row_expanded)
+
         self._mode_stack = QStackedWidget()
 
         timer_page = QWidget()
@@ -225,6 +245,9 @@ class ClockModule(Module):
         if self._timer_toggle is not None:
             self._timer_toggle.setChecked(is_timer)
             self._sw_toggle.setChecked(not is_timer)
+        if self._timer_toggle_expanded is not None:
+            self._timer_toggle_expanded.setChecked(is_timer)
+            self._sw_toggle_expanded.setChecked(not is_timer)
         if self._mode_stack is not None:
             self._mode_stack.setCurrentIndex(0 if is_timer else 1)
 
@@ -278,7 +301,7 @@ class ClockModule(Module):
         )
         layout.addWidget(reset)
 
-        del_btn = IconButton("x", tooltip="Delete timer")
+        del_btn = IconButton("\u2715", tooltip="Delete timer", variant="danger")
         del_btn.clicked.connect(
             lambda _=False, tid=timer.get("id"): self._on_timer_delete(tid)
         )
@@ -418,3 +441,5 @@ class ClockModule(Module):
 
     def on_collapse(self):
         self.flush_pending_saves()
+
+register_module("timers", ClockModule)

@@ -14,6 +14,19 @@ import ctypes.wintypes as wintypes
 from PySide6.QtCore import QObject, QTimer, Signal, QRect
 
 HYSTERESIS_PX_LOGICAL = 40
+# Small tolerance on the right/top/bottom edges of the "still inside"
+# rect. Those edges sit flush against the physical screen boundary,
+# and DPI rounding (int(px/dpr)) can nudge the computed logical cursor
+# position by a pixel between polls even when the hand hasn't moved.
+# Without this the sidebar reads "cursor left" on a stray poll, closes,
+# and then immediately reopens once the cooldown clears - an on/off
+# loop whenever the cursor rests right at the edge. This gives the
+# rounding room to wobble without crossing the boundary.
+EDGE_SLOP_PX_LOGICAL = 8
+# Require this many consecutive "outside" polls before even starting
+# the leave-grace timer, as a second line of defense against single
+# noisy reads.
+LEAVE_CONFIRM_POLLS = 2
 DEBUG_POLLS = 20
 
 class EdgeTrigger(QObject):
@@ -32,6 +45,7 @@ class EdgeTrigger(QObject):
         self._reopen_armed = True
         self._debug = debug
         self._debug_count = 0
+        self._outside_streak = 0
 
         self._poll = QTimer(self)
         self._poll.setInterval(poll_ms)
@@ -69,7 +83,14 @@ class EdgeTrigger(QObject):
         return phys_width - self._trigger_px
 
     def _logical_inside_rect(self):
-        return self._open_geo_provider().adjusted(-HYSTERESIS_PX_LOGICAL, 0, 0, 0)
+        # Left side keeps the larger hysteresis (room to move away from
+        # the panel without closing it). Right/top/bottom get a small
+        # slop so DPI-rounding jitter at the physical screen boundary
+        # can't read as "left the zone" on its own.
+        return self._open_geo_provider().adjusted(
+            -HYSTERESIS_PX_LOGICAL, -EDGE_SLOP_PX_LOGICAL,
+            EDGE_SLOP_PX_LOGICAL, EDGE_SLOP_PX_LOGICAL,
+        )
 
     @staticmethod
     def _cursor_pos_physical():
@@ -100,9 +121,11 @@ class EdgeTrigger(QObject):
             return
 
         if self._logical_inside_rect().contains(lx, ly):
+            self._outside_streak = 0
             self._leave_timer.stop()
         else:
-            if not self._leave_timer.isActive():
+            self._outside_streak += 1
+            if self._outside_streak >= LEAVE_CONFIRM_POLLS and not self._leave_timer.isActive():
                 self._leave_timer.start()
 
     def _confirm_leave(self):

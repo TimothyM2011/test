@@ -7,7 +7,7 @@ Reads config.modules and instantiates each module in order. Width
 animates between sidebar_width and expanded_width as modules request
 expand/collapse.
 """
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtGui import QGuiApplication
 
@@ -17,6 +17,8 @@ from core.state import StateStore
 from core.tick_dispatcher import TickDispatcher
 from core.edge_trigger import EdgeTrigger
 from core.widgets import ExpandedCard
+from core.registry import get_module_class
+import modules  # noqa: F401  (import triggers every module's self-registration)
 
 class Sidebar(QWidget):
     def __init__(self, config: Config):
@@ -102,14 +104,13 @@ class Sidebar(QWidget):
         h = QHBoxLayout(header)
         h.setContentsMargins(16, 0, 12, 0)
 
-        title = QLabel("RIGHTSIDE")
+        
+        title = QLabel("Hello Timothy!")
         title.setObjectName("HeaderTitle")
-        settings_btn = QPushButton("g")
-        settings_btn.setFixedSize(28, 28)
+        title.setStyleSheet("font-size: 14px; font-weight: bold; padding-left: 16px; padding-right: 12px;")
 
         h.addWidget(title)
         h.addStretch()
-        h.addWidget(settings_btn)
         root.addWidget(header)
 
         content = QWidget()
@@ -126,20 +127,15 @@ class Sidebar(QWidget):
         self._pos_anim.finished.connect(self._on_anim_finished)
 
     def _instantiate_module(self, module_id):
-        if module_id == "hardware":
-            from modules.hardware.module import HardwareModule
-            return HardwareModule(self.config, self.state_store, host=self)
-        if module_id == "notes":
-            from modules.notes.notes import NotesModule
-            return NotesModule(self.config, self.state_store, host=self)
-        if module_id == "tasks":
-            from modules.tasks.tasks import TasksModule
-            return TasksModule(self.config, self.state_store, host=self)
-        if module_id == "timers":
-            from modules.timers.clock import ClockModule
-            return ClockModule(self.config, self.state_store, host=self)
-        print(f"[window] unknown module id: {module_id}")
-        return None
+        # Modules are looked up in the registry that every module file
+        # populates on import (see modules/__init__.py). Adding a new
+        # module never requires touching this method - just register
+        # it and list its id in config.json.
+        module_cls = get_module_class(module_id)
+        if module_cls is None:
+            print(f"[window] unknown module id: {module_id}")
+            return None
+        return module_cls(self.config, self.state_store, host=self)
 
     def _build_modules(self):
         for module_id in self.config.modules:
@@ -174,8 +170,14 @@ class Sidebar(QWidget):
     def request_expand(self, module_id):
         if module_id in self._expanded_modules:
             return
+        # Only one module is expanded at a time: expanding a new one
+        # collapses whatever was expanded before it.
+        for other_id in list(self._expanded_modules):
+            self._expanded_modules.discard(other_id)
+            self._apply_module_visual_state(other_id, False)
         self._expanded_modules.add(module_id)
         self._apply_module_visual_state(module_id, True)
+        self._apply_focus_visibility()
         if self._is_open:
             self._animate_to_width(self.config.expanded_width)
 
@@ -184,8 +186,26 @@ class Sidebar(QWidget):
             return
         self._expanded_modules.discard(module_id)
         self._apply_module_visual_state(module_id, False)
+        self._apply_focus_visibility()
         if not self._expanded_modules and self._is_open:
             self._animate_to_width(self.config.sidebar_width)
+
+    def _apply_focus_visibility(self):
+        """
+        When a module is expanded, hide every other module's widget so
+        only the expanded one is shown; with nothing expanded, show
+        them all again.
+
+        Also give the focused card's layout stretch factor so it
+        actually fills the sidebar's height instead of sitting at its
+        own minimum size hint (which is what made the expanded box
+        look cut off / not fully shown).
+        """
+        focused = next(iter(self._expanded_modules), None)
+        for mid, widget in self._module_widgets.items():
+            is_focused = focused is not None and mid == focused
+            widget.setVisible(focused is None or is_focused)
+            self.content_layout.setStretchFactor(widget, 1 if is_focused else 0)
 
     def _apply_module_visual_state(self, module_id, expanded):
         widget = self._module_widgets.get(module_id)
@@ -231,6 +251,7 @@ class Sidebar(QWidget):
 
         for mid in list(self._expanded_modules):
             self._apply_module_visual_state(mid, True)
+        self._apply_focus_visibility()
 
         self._pos_anim.stop()
         self._pos_anim.setStartValue(self._current_closed_geo())

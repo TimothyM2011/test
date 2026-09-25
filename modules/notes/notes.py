@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from core.module import Module
+from core.registry import register_module
 from core.widgets import ExpandedCard, IconButton
 
 def _now_iso():
@@ -99,7 +100,7 @@ class NotesModule(Module):
         self._title_edit = QLineEdit()
         self._title_edit.setPlaceholderText("Title")
         self._title_edit.textEdited.connect(self._on_title_edit)
-        del_btn = IconButton("x", tooltip="Delete note")
+        del_btn = IconButton("\u2715", tooltip="Delete note", variant="danger")
         del_btn.clicked.connect(self._on_delete)
         title_row.addWidget(self._title_edit, 1)
         title_row.addWidget(del_btn)
@@ -116,7 +117,7 @@ class NotesModule(Module):
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 2)
         split.setSizes([160, 320])
-        self._card.expanded_layout.addWidget(split)
+        self._card.expanded_layout.addWidget(split, 1)
 
         self._rebuild()
         return self._card
@@ -206,14 +207,28 @@ class NotesModule(Module):
     def _on_expanded_click(self, item):
         self._select(item.data(Qt.UserRole))
 
+    def _update_list_titles(self, note_id, display_text):
+        """Reflect a title edit in both list widgets immediately,
+        without a full _rebuild() (which would fight the cursor
+        position and re-sort while you're still typing)."""
+        for lst in (self._compact_list, self._expanded_list):
+            if lst is None:
+                continue
+            for i in range(lst.count()):
+                item = lst.item(i)
+                if item.data(Qt.UserRole) == note_id:
+                    item.setText(display_text)
+
     def _on_title_edit(self, text):
         if self._suppress:
             return
-        note = self._find(self._data.get("selected_id"))
+        note_id = self._data.get("selected_id")
+        note = self._find(note_id)
         if note is None:
             return
         note["title"] = text
         note["updated"] = _now_iso()
+        self._update_list_titles(note_id, self._display_title(note))
         self._persist_debounced()
 
     def _on_body_edit(self):
@@ -228,3 +243,6 @@ class NotesModule(Module):
 
     def on_collapse(self):
         self.flush_pending_saves()
+
+
+register_module("notes", NotesModule)
