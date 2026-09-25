@@ -1,38 +1,27 @@
 """
 core/tick_dispatcher.py
 
-Single centralized ticking system instead of every module running
-its own QTimer/thread. Modules register an update callback plus how
-often (in ticks) they want to run at each tier.
+One shared timer, two tiers:
+  COLLAPSED - 5 minute tick, only cheap modules run
+  EXPANDED  - 1 second base tick, modules run every N ticks
 
-Two tiers:
-  COLLAPSED - sidebar hidden. Base tick = 5 minutes. Only modules
-              marked cheap=True run here (e.g. hardware summary via
-              psutil). Everything else is skipped entirely.
-  EXPANDED  - sidebar visible. Base tick = 1 second. Each module
-              declares a multiple of the base tick to run at
-              (e.g. GPU every 4 ticks = ~4s, CPU every tick = ~1s).
-
-On expand, we force one immediate full refresh pass across every
-registered module before switching to the expanded tier, so the
-user always sees fresh numbers the moment the panel opens.
+On expand we do one immediate full refresh so the user sees fresh
+numbers the moment the panel opens.
 """
 
 from dataclasses import dataclass
 from typing import Callable
 from PySide6.QtCore import QObject, QTimer
 
-COLLAPSED_INTERVAL_MS = 5 * 60 * 1000   # 5 minutes
-EXPANDED_BASE_INTERVAL_MS = 1000        # 1 second
-
+COLLAPSED_INTERVAL_MS = 5 * 60 * 1000
+EXPANDED_BASE_INTERVAL_MS = 1000
 
 @dataclass
 class ModuleReg:
     name: str
     callback: Callable[[], None]
-    cheap: bool = False          # runs even while collapsed
-    expanded_every: int = 1      # run every N expanded base-ticks
-
+    cheap: bool = False
+    expanded_every: int = 1
 
 class TickDispatcher(QObject):
     def __init__(self, parent=None):
@@ -45,8 +34,7 @@ class TickDispatcher(QObject):
         self._timer.timeout.connect(self._on_tick)
         self._set_collapsed_tier()
 
-    def register(self, name: str, callback: Callable[[], None],
-                 cheap: bool = False, expanded_every: int = 1):
+    def register(self, name, callback, cheap=False, expanded_every=1):
         self._modules.append(ModuleReg(name, callback, cheap, expanded_every))
 
     def _set_collapsed_tier(self):
@@ -61,7 +49,6 @@ class TickDispatcher(QObject):
         self._timer.setInterval(EXPANDED_BASE_INTERVAL_MS)
 
     def on_expand(self):
-        """Call the instant the sidebar starts opening."""
         self.force_full_refresh()
         self._set_expanded_tier()
 
@@ -74,14 +61,12 @@ class TickDispatcher(QObject):
 
     def _on_tick(self):
         if not self._is_expanded:
-            # Collapsed tier: only cheap modules run
             for mod in self._modules:
                 if mod.cheap:
                     mod.callback()
             return
-
-        # Expanded tier
         self._expanded_tick_count += 1
         for mod in self._modules:
             if self._expanded_tick_count % mod.expanded_every == 0:
                 mod.callback()
+

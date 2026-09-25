@@ -1,91 +1,118 @@
 """
 core/edge_trigger.py
 
-Efficient right-edge hover detection.
+Right-edge hover detection with DPI awareness.
 
-We deliberately do NOT use a full-frequency global mouse hook running
-Python callbacks on every OS mouse-move event (that wakes the
-interpreter constantly and is wasteful for a "does nothing when
-idle" app). Instead:
-
-  - A QTimer polls cursor position at a modest interval (default 120ms)
-  - The check itself is a single ctypes call (GetCursorPos) - cheap
-  - We only care whether the cursor is within TRIGGER_WIDTH px of the
-    right edge of the primary screen, and whether it's within the
-    sidebar's vertical band once open (for hiding on leave)
-
-120ms is imperceptible to the user for a "reach the edge, sidebar
-appears" interaction, but is ~8 checks/sec instead of hundreds, and
-each check is a single cheap syscall.
+Qt screen geometry is in logical pixels; GetCursorPos returns physical.
+We compare the physical cursor against a physical edge band, and the
+logical cursor against a logical "inside" rect.
 """
 
 import ctypes
-from PySide6.QtCore import QObject, QTimer, Signal
+import ctypes.wintypes as wintypes
 
-TRIGGER_WIDTH = 4          # px from the right edge that counts as "hit"
-POLL_INTERVAL_MS = 120      # how often we check cursor position
-LEAVE_GRACE_MS = 300        # debounce before collapsing on mouse-leave
+from PySide6.QtCore import QObject, QTimer, Signal, QRect
 
+HYSTERESIS_PX_LOGICAL = 40
+DEBUG_POLLS = 20
 
 class EdgeTrigger(QObject):
     edge_hit = Signal()
     left_zone = Signal()
 
-    def __init__(self, screen_geometry, sidebar_geometry_getter, parent=None):
+    def __init__(self, screen_logical, device_pixel_ratio, open_geo_provider,
+                 trigger_px=3, poll_ms=100, leave_grace_ms=350,
+                 reopen_cooldown_ms=450, debug=False, parent=None):
         super().__init__(parent)
-        self._screen_geo = screen_geometry
-        self._get_sidebar_geo = sidebar_geometry_getter
+        self._screen = screen_logical
+        self._dpr = max(1.0, float(device_pixel_ratio))
+        self._open_geo_provider = open_geo_provider
+        self._trigger_px = trigger_px
         self._is_open = False
-        self._pending_close = False
+        self._reopen_armed = True
+        self._debug = debug
+        self._debug_count = 0
 
-        self._poll_timer = QTimer(self)
-        self._poll_timer.setInterval(POLL_INTERVAL_MS)
-        self._poll_timer.timeout.connect(self._check_cursor)
+        self._poll = QTimer(self)
+        self._poll.setInterval(poll_ms)
+        self._poll.timeout.connect(self._check_cursor)
 
         self._leave_timer = QTimer(self)
         self._leave_timer.setSingleShot(True)
-        self._leave_timer.setInterval(LEAVE_GRACE_MS)
+        self._leave_timer.setInterval(leave_grace_ms)
         self._leave_timer.timeout.connect(self._confirm_leave)
 
+        self._cooldown_timer = QTimer(self)
+        self._cooldown_timer.setSingleShot(True)
+        self._cooldown_timer.setInterval(reopen_cooldown_ms)
+        self._cooldown_timer.timeout.connect(self._arm_reopen)
+
     def start(self):
-        self._poll_timer.start()
+        self._poll.start()
 
     def stop(self):
-        self._poll_timer.stop()
+        self._poll.stop()
 
-    def set_open(self, is_open: bool):
+    def set_open(self, is_open):
         self._is_open = is_open
+        if is_open:
+            self._leave_timer.stop()
+        else:
+            self._reopen_armed = False
+            self._cooldown_timer.start()
+
+    def _arm_reopen(self):
+        self._reopen_armed = True
+
+    def _physical_edge_x(self):
+        phys_width = int(round(self._screen.width() * self._dpr))
+        return phys_width - self._trigger_px
+
+    def _logical_inside_rect(self):
+        return self._open_geo_provider().adjusted(-HYSTERESIS_PX_LOGICAL, 0, 0, 0)
 
     @staticmethod
-    def _cursor_pos():
-        pt = ctypes.wintypes.POINT() if hasattr(ctypes, "wintypes") else None
-        try:
-            import ctypes.wintypes as wintypes
-            pt = wintypes.POINT()
-            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-            return pt.x, pt.y
-        except Exception:
-            # Non-Windows dev environment fallback (no-op)
+    def _cursor_pos_physical():
+        pt = wintypes.POINT()
+        if not ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
             return None
+        return pt.x, pt.y
 
     def _check_cursor(self):
-        pos = self._cursor_pos()
-        if pos is None:
+        phys = self._cursor_pos_physical()
+        if phys is None:
             return
-        x, y = pos
+        px, py = phys
+        lx = int(px / self._dpr)
+        ly = int(py / self._dpr)
+
+        if self._debug and self._debug_count < DEBUG_POLLS:
+            self._debug_count += 1
+            print(f"[edge] phys=({px},{py}) log=({lx},{ly}) dpr={self._dpr} "
+                  f"edge_x={self._physical_edge_x()} open={self._is_open} armed={self._reopen_armed}")
 
         if not self._is_open:
-            edge_x = self._screen_geo.right() - TRIGGER_WIDTH
-            if x >= edge_x:
+            if not self._reopen_armed:
+                return
+            edge_x = self._physical_edge_x()
+            if px >= edge_x and self._screen.top() <= ly <= self._screen.bottom():
                 self.edge_hit.emit()
+            return
+
+        if self._logical_inside_rect().contains(lx, ly):
+            self._leave_timer.stop()
         else:
-            geo = self._get_sidebar_geo()
-            inside = geo.contains(x, y)
-            if not inside:
-                if not self._leave_timer.isActive():
-                    self._leave_timer.start()
-            else:
-                self._leave_timer.stop()
+            if not self._leave_timer.isActive():
+                self._leave_timer.start()
 
     def _confirm_leave(self):
+        phys = self._cursor_pos_physical()
+        if phys is None:
+            self.left_zone.emit()
+            return
+        px, py = phys
+        lx = int(px / self._dpr)
+        ly = int(py / self._dpr)
+        if self._logical_inside_rect().contains(lx, ly):
+            return
         self.left_zone.emit()

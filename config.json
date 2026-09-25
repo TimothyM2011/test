@@ -1,0 +1,28 @@
+{
+  "sidebar_width": 300,
+  "expanded_width": 600,
+  "anim_ms": 180,
+  "edge_trigger_px": 3,
+  "leave_grace_ms": 350,
+  "reopen_cooldown_ms": 450,
+  "poll_ms": 100,
+  "theme": "dark",
+  "debug_edge": false,
+  "state_dir": "state",
+  "modules": [
+    "hardware",
+    "notes",
+    "tasks",
+    "timers"
+  ],
+  "apps": [
+    {
+      "name": "Chrome",
+      "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    },
+    {
+      "name": "VS Code",
+      "path": "C:\\Users\\Timothy\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+    }
+  ]
+}

@@ -1,16 +1,16 @@
 """
 core/theme.py
-Single source of truth for colors + stylesheet. Change values here,
-the whole app re-themes.
+Single source of truth for colors + stylesheet.
 """
 
-ACCENT = "#6ad3ff"        # muted cyan accent
+ACCENT = "#6ad3ff"
 BG_WINDOW = "#1a1a1e"
 BG_CARD = "#232328"
 BG_CARD_HOVER = "#2a2a30"
 BORDER = "#33333a"
 TEXT_PRIMARY = "#e6e6e8"
 TEXT_SECONDARY = "#9a9aa2"
+TEXT_MUTED = "#6b6b74"
 DANGER = "#ff6b6b"
 
 RADIUS = 10
@@ -92,6 +92,58 @@ QPushButton#DangerButton:hover {{
     color: {DANGER};
 }}
 
+QLineEdit, QPlainTextEdit, QTextEdit, QDateEdit {{
+    background-color: #16161a;
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    padding: 5px 8px;
+    color: {TEXT_PRIMARY};
+    selection-background-color: {ACCENT};
+    selection-color: #101014;
+}}
+
+QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QDateEdit:focus {{
+    border-color: {ACCENT};
+}}
+
+QCheckBox {{
+    spacing: 8px;
+}}
+
+QCheckBox::indicator {{
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid {BORDER};
+    background-color: #16161a;
+}}
+
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT};
+    border-color: {ACCENT};
+}}
+
+QListWidget {{
+    background-color: #16161a;
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    padding: 4px;
+}}
+
+QListWidget::item {{
+    padding: 6px 8px;
+    border-radius: 4px;
+}}
+
+QListWidget::item:selected {{
+    background-color: {BG_CARD_HOVER};
+    color: {TEXT_PRIMARY};
+}}
+
+QListWidget::item:hover {{
+    background-color: #1f1f24;
+}}
+
 QScrollBar:vertical {{
     background: transparent;
     width: 6px;
@@ -105,5 +157,20 @@ QScrollBar::handle:vertical {{
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
+}}
+
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 6px;
+}}
+
+QScrollBar::handle:horizontal {{
+    background: {BORDER};
+    border-radius: 3px;
+    min-width: 24px;
+}}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0px;
 }}
 """

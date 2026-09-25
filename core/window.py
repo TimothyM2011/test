@@ -1,68 +1,94 @@
 """
 core/window.py
 
-The sidebar window itself:
-  - Frameless, always-on-top, anchored to the right screen edge
-  - Slides in/out with a parallel opacity fade (both animated
-    together so the panel feels like it eases in rather than
-    "sliding then appearing")
-  - Fully collapses off-screen when hidden (not just invisible) so
-    it costs nothing while idle
-  - Talks to EdgeTrigger for show/hide and TickDispatcher for the
-    two-tier refresh model
-"""
+Frameless, always-on-top sidebar anchored to the right screen edge.
 
+Reads config.modules and instantiates each module in order. Width
+animates between sidebar_width and expanded_width as modules request
+expand/collapse.
+"""
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, QParallelAnimationGroup
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtGui import QGuiApplication
 
+from core.config import Config
 from core.theme import STYLESHEET
-from core.widgets import Card, MetricRow
+from core.state import StateStore
 from core.tick_dispatcher import TickDispatcher
 from core.edge_trigger import EdgeTrigger
-from modules.hardware import hardware
-
-SIDEBAR_WIDTH = 300
-ANIM_DURATION_MS = 220
-
+from core.widgets import ExpandedCard
 
 class Sidebar(QWidget):
-    def __init__(self):
+    def __init__(self, config: Config):
         super().__init__()
+        self.config = config
+        self._is_open = False
+        self._current_width = config.sidebar_width
+        self._expanded_modules = set()
+
         self._build_window_flags()
         self.setStyleSheet(STYLESHEET)
 
-        screen = QGuiApplication.primaryScreen().geometry()
-        self._screen_geo = screen
-        self.setFixedSize(SIDEBAR_WIDTH, screen.height())
+        primary = QGuiApplication.primaryScreen()
+        screen = primary.geometry()
+        dpr = primary.devicePixelRatio()
+        self._screen = screen
+        self._dpr = dpr
 
-        # Start fully off-screen to the right, invisible
-        self._closed_geo = QRect(screen.right(), 0, SIDEBAR_WIDTH, screen.height())
-        self._open_geo = QRect(screen.right() - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, screen.height())
+        self.setFixedSize(self._current_width, screen.height())
+
+        self._closed_geo = QRect(screen.right(), screen.top(),
+                                 self._current_width, screen.height())
+        self._open_geo = QRect(screen.right() - self._current_width, screen.top(),
+                               self._current_width, screen.height())
         self.setGeometry(self._closed_geo)
+
+        self.state_store = StateStore(config.state_path)
+        self.dispatcher = TickDispatcher(self)
+
+        self._modules = []
+        self._module_widgets = {}
 
         self._build_ui()
         self._build_animation()
+        self._build_modules()
+        self._register_module_ticks()
 
-        self.dispatcher = TickDispatcher(self)
-        self._register_modules()
-
-        self.edge = EdgeTrigger(screen, lambda: self.geometry(), self)
+        self.edge = EdgeTrigger(
+            screen_logical=screen,
+            device_pixel_ratio=dpr,
+            open_geo_provider=self._current_open_geo,
+            trigger_px=config.edge_trigger_px,
+            poll_ms=config.poll_ms,
+            leave_grace_ms=config.leave_grace_ms,
+            reopen_cooldown_ms=config.reopen_cooldown_ms,
+            debug=config.debug_edge,
+            parent=self,
+        )
         self.edge.edge_hit.connect(self.open_sidebar)
         self.edge.left_zone.connect(self.close_sidebar)
         self.edge.start()
 
-        self._is_open = False
-        self.hide()  # truly unmapped, not just transparent
+        self.hide()
 
-    # ---------------------------------------------------------- window setup
+    def _current_open_geo(self):
+        return QRect(self._screen.right() - self._current_width,
+                     self._screen.top(),
+                     self._current_width,
+                     self._screen.height())
+
+    def _current_closed_geo(self):
+        return QRect(self._screen.right(),
+                     self._screen.top(),
+                     self._current_width,
+                     self._screen.height())
+
     def _build_window_flags(self):
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool  # no taskbar entry
+            | Qt.Tool
         )
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -73,17 +99,17 @@ class Sidebar(QWidget):
         header = QWidget()
         header.setObjectName("HeaderBar")
         header.setFixedHeight(44)
-        h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(16, 0, 12, 0)
+        h = QHBoxLayout(header)
+        h.setContentsMargins(16, 0, 12, 0)
 
         title = QLabel("RIGHTSIDE")
         title.setObjectName("HeaderTitle")
-        settings_btn = QPushButton("⚙")
+        settings_btn = QPushButton("g")
         settings_btn.setFixedSize(28, 28)
 
-        h_layout.addWidget(title)
-        h_layout.addStretch()
-        h_layout.addWidget(settings_btn)
+        h.addWidget(title)
+        h.addStretch()
+        h.addWidget(settings_btn)
         root.addWidget(header)
 
         content = QWidget()
@@ -91,65 +117,105 @@ class Sidebar(QWidget):
         self.content_layout.setContentsMargins(14, 14, 14, 14)
         self.content_layout.setSpacing(12)
         self.content_layout.addStretch()
-        root.addWidget(content)
-
-        # Hardware card (first module wired up end-to-end)
-        self.hw_card = Card("System")
-        self.cpu_row = MetricRow("CPU")
-        self.ram_row = MetricRow("RAM")
-        self.gpu_row = MetricRow("GPU")
-        self.hw_card.body.addWidget(self.cpu_row)
-        self.hw_card.body.addWidget(self.ram_row)
-        self.hw_card.body.addWidget(self.gpu_row)
-        self.content_layout.insertWidget(0, self.hw_card)
-
-        # Opacity effect target = whole window content
-        from PySide6.QtWidgets import QGraphicsOpacityEffect
-        self._opacity_effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self._opacity_effect)
-        self._opacity_effect.setOpacity(0.0)
+        root.addWidget(content, 1)
 
     def _build_animation(self):
         self._pos_anim = QPropertyAnimation(self, b"geometry")
-        self._pos_anim.setDuration(ANIM_DURATION_MS)
+        self._pos_anim.setDuration(self.config.anim_ms)
         self._pos_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._pos_anim.finished.connect(self._on_anim_finished)
 
-        self._opacity_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
-        self._opacity_anim.setDuration(ANIM_DURATION_MS)
-        self._opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
+    def _instantiate_module(self, module_id):
+        if module_id == "hardware":
+            from modules.hardware.module import HardwareModule
+            return HardwareModule(self.config, self.state_store, host=self)
+        if module_id == "notes":
+            from modules.notes.notes import NotesModule
+            return NotesModule(self.config, self.state_store, host=self)
+        if module_id == "tasks":
+            from modules.tasks.tasks import TasksModule
+            return TasksModule(self.config, self.state_store, host=self)
+        if module_id == "timers":
+            from modules.timers.clock import ClockModule
+            return ClockModule(self.config, self.state_store, host=self)
+        print(f"[window] unknown module id: {module_id}")
+        return None
 
-        self._group = QParallelAnimationGroup(self)
-        self._group.addAnimation(self._pos_anim)
-        self._group.addAnimation(self._opacity_anim)
+    def _build_modules(self):
+        for module_id in self.config.modules:
+            mod = self._instantiate_module(module_id)
+            if mod is None:
+                continue
+            widget = mod.widget()
+            self._modules.append(mod)
+            self._module_widgets[mod.id] = widget
 
-    # ---------------------------------------------------------- modules
-    def _register_modules(self):
-        self.dispatcher.register(
-            "hardware_cheap",
-            self._refresh_hardware_cheap,
-            cheap=True,
-        )
-        self.dispatcher.register(
-            "hardware_full",
-            self._refresh_hardware_full,
-            cheap=False,
-            expanded_every=1,
-        )
+            card = widget if isinstance(widget, ExpandedCard) else None
+            if card is None:
+                card = widget.findChild(ExpandedCard)
+            if card is not None:
+                card.expand_requested.connect(
+                    lambda _=False, mid=mod.id: self.request_expand(mid))
+                card.collapse_requested.connect(
+                    lambda _=False, mid=mod.id: self.request_collapse(mid))
 
-    def _refresh_hardware_cheap(self):
-        # Runs every 5 min while collapsed - no UI paint needed since
-        # nothing is visible, but we keep the values warm so the
-        # instant-open refresh has less to catch up on.
-        self._last_stats = hardware.read_cheap_stats()
+            idx = self.content_layout.count() - 1
+            self.content_layout.insertWidget(idx, widget)
 
-    def _refresh_hardware_full(self):
-        stats = hardware.read_full_stats()
-        self._last_stats = stats
-        self.cpu_row.set_value(stats.get("cpu_percent"))
-        self.ram_row.set_value(stats.get("ram_percent"))
-        self.gpu_row.set_value(stats.get("gpu_percent"))
+    def _register_module_ticks(self):
+        for mod in self._modules:
+            self.dispatcher.register(
+                f"module::{mod.id}",
+                mod.on_tick,
+                cheap=getattr(mod, "cheap_tick", False),
+                expanded_every=getattr(mod, "expanded_every", 1),
+            )
 
-    # ---------------------------------------------------------- open/close
+    def request_expand(self, module_id):
+        if module_id in self._expanded_modules:
+            return
+        self._expanded_modules.add(module_id)
+        self._apply_module_visual_state(module_id, True)
+        if self._is_open:
+            self._animate_to_width(self.config.expanded_width)
+
+    def request_collapse(self, module_id):
+        if module_id not in self._expanded_modules:
+            return
+        self._expanded_modules.discard(module_id)
+        self._apply_module_visual_state(module_id, False)
+        if not self._expanded_modules and self._is_open:
+            self._animate_to_width(self.config.sidebar_width)
+
+    def _apply_module_visual_state(self, module_id, expanded):
+        widget = self._module_widgets.get(module_id)
+        if widget is None:
+            return
+        card = widget if isinstance(widget, ExpandedCard) else widget.findChild(ExpandedCard)
+        if card is not None:
+            card.set_expanded(expanded)
+        mod = next((m for m in self._modules if m.id == module_id), None)
+        if mod is not None:
+            if expanded:
+                mod.on_expand()
+            else:
+                mod.on_collapse()
+
+    def _animate_to_width(self, target_width):
+        if target_width == self._current_width:
+            return
+        self._current_width = target_width
+        self.setFixedSize(target_width, self._screen.height())
+        start = self.geometry()
+        target = QRect(self._screen.right() - target_width,
+                       self._screen.top(),
+                       target_width,
+                       self._screen.height())
+        self._pos_anim.stop()
+        self._pos_anim.setStartValue(start)
+        self._pos_anim.setEndValue(target)
+        self._pos_anim.start()
+
     def open_sidebar(self):
         if self._is_open:
             return
@@ -157,14 +223,19 @@ class Sidebar(QWidget):
         self.edge.set_open(True)
 
         self.show()
-        self.dispatcher.on_expand()  # immediate full refresh, then fast tier
+        self.raise_()
+        self.dispatcher.on_expand()
 
-        self._group.stop()
-        self._pos_anim.setStartValue(self._closed_geo)
-        self._pos_anim.setEndValue(self._open_geo)
-        self._opacity_anim.setStartValue(0.0)
-        self._opacity_anim.setEndValue(1.0)
-        self._group.start()
+        for mod in self._modules:
+            mod.flush_pending_saves()
+
+        for mid in list(self._expanded_modules):
+            self._apply_module_visual_state(mid, True)
+
+        self._pos_anim.stop()
+        self._pos_anim.setStartValue(self._current_closed_geo())
+        self._pos_anim.setEndValue(self._current_open_geo())
+        self._pos_anim.start()
 
     def close_sidebar(self):
         if not self._is_open:
@@ -173,14 +244,14 @@ class Sidebar(QWidget):
         self.edge.set_open(False)
         self.dispatcher.on_collapse()
 
-        self._group.stop()
-        self._pos_anim.setStartValue(self.geometry())
-        self._pos_anim.setEndValue(self._closed_geo)
-        self._opacity_anim.setStartValue(1.0)
-        self._opacity_anim.setEndValue(0.0)
-        self._group.finished.connect(self._on_close_finished)
-        self._group.start()
+        for mod in self._modules:
+            mod.flush_pending_saves()
 
-    def _on_close_finished(self):
-        self._group.finished.disconnect(self._on_close_finished)
-        self.hide()  # fully unmap - zero paint cost while collapsed
+        self._pos_anim.stop()
+        self._pos_anim.setStartValue(self.geometry())
+        self._pos_anim.setEndValue(self._current_closed_geo())
+        self._pos_anim.start()
+
+    def _on_anim_finished(self):
+        if not self._is_open:
+            self.hide()
